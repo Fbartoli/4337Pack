@@ -1,50 +1,52 @@
-import { Safe4337Pack } from '@safe-global/relay-kit'
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { baseSepolia } from 'viem/chains'
+import Safe from '@safe-global/protocol-kit'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
+import SafeApiKit from '@safe-global/api-kit'
+import type { Address, Hex } from 'viem'
 
-const SIGNER_PRIVATE_KEY = generatePrivateKey()
+
+
+const SIGNER_PRIVATE_KEY = Bun.env.KEY as Hex
 const SIGNER_ADDRESS = privateKeyToAccount(SIGNER_PRIVATE_KEY).address
-const RPC_URL = 'https://base-sepolia.g.alchemy.com/v2/G6Kjp2b01jHSPtNexytKoX8IdW7CuG6d'
+const SAFE_ADDRESS = Bun.env.ADDRESS as Address;
 
-const safe4337Pack = await Safe4337Pack.init({
-    provider: RPC_URL,
+const apiKit = new SafeApiKit({
+    chainId: 1n
+  })
+
+const newProtocolKit = await Safe.init({
+    provider: mainnet.rpcUrls.default.http[0],
     signer: SIGNER_PRIVATE_KEY,
-    bundlerUrl: `https://api.pimlico.io/v1/${baseSepolia.id}/rpc?apikey=${Bun.env.PIMLICO_API_KEY}`,
-    options: {
-        owners: [SIGNER_ADDRESS],
-        threshold: 1
-    },
-    paymasterOptions: {
-        isSponsored: true,
-        paymasterUrl: `https://api.pimlico.io/v2/${baseSepolia.id}/rpc?apikey=${Bun.env.PIMLICO_API_KEY}`,
-        sponsorshipPolicyId: Bun.env.SPONSORSHIP_POLICY_ID
-    }
+    safeAddress: SAFE_ADDRESS
 })
 
-// Define the transactions to execute
-const transaction1 = { to: SIGNER_ADDRESS, data: '0x', value: '0' }
-
-// Build the transaction array
-const transactions = [transaction1]
-
-// Create the SafeOperation with all the transactions
-const safeOperation = await safe4337Pack.createTransaction({ transactions })
-const signedSafeOperation = await safe4337Pack.signSafeOperation(safeOperation)
-const userOperationHash = await safe4337Pack.executeTransaction({
-    executable: signedSafeOperation
-})
-let userOperationReceipt = null
-
-while (!userOperationReceipt) {
-    // Wait 2 seconds before checking the status again
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    userOperationReceipt = await safe4337Pack.getUserOperationReceipt(
-        userOperationHash
-    )
-    console.log(userOperationReceipt)
+const safeTransactionData = {
+    to: SIGNER_ADDRESS,
+    data: '0x',
+    value: '0',
 }
-const userOperationPayload = await safe4337Pack.getUserOperationByHash(
-    userOperationHash
-)
 
-console.log(userOperationPayload)
+const safeTx = await newProtocolKit.createTransaction({
+    transactions: [safeTransactionData],
+  });
+  console.log(safeTx)
+  const safeTxHash = await newProtocolKit.getTransactionHash(safeTx);
+  const senderSignature = await newProtocolKit.signHash(safeTxHash);
+
+  await apiKit.proposeTransaction({
+    safeAddress: SAFE_ADDRESS,
+    safeTransactionData: safeTx.data,
+    safeTxHash,
+    senderAddress: SIGNER_ADDRESS,
+    senderSignature: senderSignature.data,
+  });
+
+  let proposedTx = await apiKit.getTransaction(safeTxHash);
+  console.log(safeTxHash, proposedTx)
+
+  // Wait for transaction to execute.
+  while (!proposedTx.isExecuted) {
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+    proposedTx = await apiKit.getTransaction(safeTxHash);
+    console.log(safeTxHash, proposedTx.safeTxHash, 'In the loop')
+  }
