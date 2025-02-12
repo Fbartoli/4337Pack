@@ -122,6 +122,12 @@ const setUpRolesCalls = zodiac.setUpRoles({
   ]
 })
 
+const encodeEnableModuleSwapper = encodeFunctionData({
+  abi: safeAbi,
+  functionName: 'enableModule',
+  args: [SWAPPER_ADDRESS],
+})
+
 const tx = await safeClient.send({
   transactions: [
     {
@@ -135,7 +141,12 @@ const tx = await safeClient.send({
       value: '0',
     },
     ...setTransactionUnwrapperCalls,
-    ...setUpRolesCalls
+    ...setUpRolesCalls,
+    {
+      to: roleProxyaddress,
+      data: encodeEnableModuleSwapper,
+      value: '0',
+    }
   ],
 })
 
