@@ -3,17 +3,13 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { createSafeClient } from '@safe-global/sdk-starter-kit'
 import { factoryAbi, rolesAbi } from './abi/gnosisGuild'
 import { safeAbi } from './abi/safe'
-import { encodeFunctionData } from 'viem'
+import { encodeFunctionData, keccak256, encodePacked, getContractAddress } from 'viem'
 import * as zodiac from "zodiac-roles-sdk";
 import { allow } from "defi-kit/gno"
 
-import {
-  getCreate2Address,
-  keccak256,
-  solidityPackedKeccak256,
-} from "ethers"
 import { encode, from } from 'ox/AbiParameters'
 import type { PermissionSet } from 'zodiac-roles-sdk'
+import { random } from 'ox/Hex'
 
 if (!process.env.PRIVATE_KEY) {
   throw new Error('PRIVATE_KEY is not set')
@@ -30,7 +26,7 @@ const SWAPPER_ADDRESS = '0x98c0b9965ac74653E8423FA24Ed8f4498ba0D3De'
 
 const calculateProxyAddress = (
   initData: string,
-  saltNonce: string
+  saltNonce: bigint
 ): string => {
   const mastercopyAddressFormatted = ROLE_ADDRESS
     .toLowerCase()
@@ -40,18 +36,17 @@ const calculateProxyAddress = (
     mastercopyAddressFormatted +
     "5af43d82803e903d91602b57fd5bf3";
 
-  const salt = solidityPackedKeccak256(
+  const salt = keccak256(encodePacked(
     ["bytes32", "uint256"],
-    [solidityPackedKeccak256(["bytes"], [initData]), saltNonce]
-  );
-  console.log('salt code',salt)
-  console.log('salt tenderly', '0xd6aba767061b5a317780184da282e857f2c5959ac58f046e5008caddc438702f') //<- keccak256(abi.encodePacked(keccak256(initializer), saltNonce)
+    [keccak256(encodePacked(["bytes"], [initData as `0x${string}`])), saltNonce]
+  ));
 
-  return getCreate2Address(
-    FACTORY_ADDRESS,
-    salt,
-    keccak256(byteCode)
-  );
+  return getContractAddress({ 
+    bytecode: byteCode as `0x${string}`,
+    from: FACTORY_ADDRESS, 
+    opcode: 'CREATE2', 
+    salt, 
+  }); 
 };
 
 const safeClient = await createSafeClient({
@@ -64,7 +59,7 @@ const safeClient = await createSafeClient({
 })
 
 const safeAddress = await safeClient.getAddress()
-const nonce = 173934935157011
+const nonce = BigInt(random(32))
 const initializer = encodeFunctionData({
   abi: rolesAbi,
   functionName: 'setUp',
@@ -83,7 +78,7 @@ const encodeDeployModule = encodeFunctionData({
   args: [ROLE_ADDRESS, initializer, BigInt(nonce)],
 })
 
-const roleProxyaddress = calculateProxyAddress(initializer, nonce.toString())
+const roleProxyaddress = calculateProxyAddress(initializer, nonce)
 console.log('roleProxyaddress',roleProxyaddress)
 
 const enableModule = encodeFunctionData({
@@ -122,11 +117,6 @@ const setUpRolesCalls = zodiac.setUpRoles({
   ]
 })
 
-const encodeEnableModuleSwapper = encodeFunctionData({
-  abi: safeAbi,
-  functionName: 'enableModule',
-  args: [SWAPPER_ADDRESS],
-})
 
 const tx = await safeClient.send({
   transactions: [
@@ -142,11 +132,6 @@ const tx = await safeClient.send({
     },
     ...setTransactionUnwrapperCalls,
     ...setUpRolesCalls,
-    {
-      to: roleProxyaddress,
-      data: encodeEnableModuleSwapper,
-      value: '0',
-    }
   ],
 })
 
