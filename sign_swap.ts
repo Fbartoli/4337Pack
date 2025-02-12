@@ -2,9 +2,7 @@ import { createPublicClient, createWalletClient, encodeFunctionData } from "viem
 import { http } from "viem"
 import { privateKeyToAccount } from "viem/accounts"
 import { gnosis } from "viem/chains"
-import { getContract } from "viem"
 import { cowSignOrder } from "./abi/cowswap"
-import { ethers } from "ethers"
 import { solidityPackedKeccak256, id } from "ethers"
 import { rolesAbi } from "./abi/gnosisGuild"
 if (!process.env.PRIVATE_KEY) {
@@ -13,10 +11,6 @@ if (!process.env.PRIVATE_KEY) {
 const SIGNER_PRIVATE_KEY = process.env.ADMIN_ADDRESS_KEY as `0x${string}`
 const SIGNER = privateKeyToAccount(SIGNER_PRIVATE_KEY)
 const COWSWAP_ADDRESS = '0x23dA9AdE38E4477b23770DeD512fD37b12381FAB'
-
-const publicClient = createPublicClient({
-    transport: http(gnosis.rpcUrls.default.http[0]),
-})
 
 const walletClient = createWalletClient({
     account: SIGNER,
@@ -49,9 +43,6 @@ const signOrderData = encodeFunctionData({
     functionName: 'signOrder',
     args: [demoOrder, now + 60 * 10, BigInt(0)]
 })
-
-console.log('signOrderData', signOrderData)
-console.log(' ')
 
 const roleActionData = encodeFunctionData({
     abi: rolesAbi,
